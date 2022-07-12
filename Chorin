@@ -1,0 +1,122 @@
+fclose all;
+clear;
+delete *.G
+delete *mod.G
+delete *nott.G
+delete *nott_bl.G
+
+% locate directories
+[tadapath, nm] = fileparts(which('gest.m'));
+if ispc gestpath = [tadapath '\gest\'];
+else gestpath = [tadapath '/gest/'];
+end
+thispath = cd;
+if ispc d = '\'; else d = '/'; end
+language = 'german';
+langpath = [gestpath language d];
+coupling = [langpath 'coupling.ph'];
+
+art = ["UL" "JAW" "LL" "TT" "C" "TD" "TR" "TF"];
+clr = ['k'; 'b'; 'g'; 'r'; 'm'; 'c'];
+
+items = table('Size',[0 2], 'VariableNames', {'utt' 'arpa'}, 'VariableTypes',horzcat(repmat({'string'},1,2)));
+% create list of stimuli in ARPABET form
+for C1 = ['b', 'g', 'd'] %, 'z'
+    for V = ["ii", "ee", "yy", "oo", "ax" ,"uu"]
+        for C2 = ['g','d', 'b']
+            if C1~= C2
+                V = convertStringsToChars(V);
+                utt = [C1  V(1)  C2 'e'];
+                arpa = ['(AAJ)(NAE)#(' upper(C1) upper(V) ')(' upper(C2) 'AE)'];
+                item = table({utt},{arpa},  'VariableNames', {'utt' 'arpa'});
+                items = [items;item];
+        end
+    end
+    end
+end
+
+% table for collecting results
+res_bl= table('Size',[0 430],'VariableTypes',horzcat(repmat({'string'},1,10), repmat({'double'},1,420)));
+out_mod = table('Size',[0 430],'VariableTypes',horzcat(repmat({'string'},1,10), repmat({'double'},1,420)));
+
+for i = 1:numel(items)/2
+    % for C1 = ['d']
+    %     for V = ["ii"]
+    %         for C2 = ['b']
+    utt = items{i,1};
+    arpa = items{i,2};
+    % tada(utt{1}, arpa{1}) - do not hard code the generation of default
+    % items into every script. Instead, generate them once and store in the
+    % folder 
+    
+    %% mod
+    bl_cl = [1;3;5];
+    % bl_cd = [1;2;3;4;5];
+    
+    for bl = 1:length(bl_cl)
+        clear vv;
+        tv = fopen(['TV' utt{1} '.O'], 'r');
+        C = textscan(tv,'%s %s %s %s %s %s %s %s %s','Delimiter',' ','MultipleDelimsAsOne',1, 'CommentStyle','%');
+        fclose(tv);
+        T = cell2table(horzcat(C{:}));
+        Tnew = T;
+        
+        %% locate gestures
+        g_ind = locate_gestures(Tnew);
+        Tnew.Var3(g_ind.tbcl_alv) = {'100'}; % I always change this for adults as it is better aprox. of our exp data
+        
+        % C = find(contains(Tnew.Var1,["TBCL"]) & contains(Tnew.Var2,["ons"]) | contains(Tnew.Var1,["TBCL"]) & contains(Tnew.Var2, "cod"));
+        %             c_tbcl = find(contains(Tnew.Var1,["TBCL"]) & contains(Tnew.Var2,["ons"]) | contains(Tnew.Var1,["TBCL"]) & contains(Tnew.Var2, "cod"));
+        %             c_tbcd = find(contains(Tnew.Var1,["TBCD"]) & contains(Tnew.Var2,["ons"]) | contains(Tnew.Var1,["TBCD"]) & contains(Tnew.Var2, "cod"));
+        % finding all TBCL gestures
+        tb = find(contains(Tnew.Var1,["TBCL","TBCD"]) & contains(Tnew.Var2,["ons"]) | contains(Tnew.Var1,["TBCL","TBCD"]) & contains(Tnew.Var2, "cod"));
+        
+        %% change blending values
+        for i = 1:length(tb)    % all TB gestures
+            Tnew.Var7(tb(i,:)) = {num2str(bl_cl(bl))};
+            Tnew.Var8(tb(i,:)) = {num2str(1/bl_cl(bl))};
+
+        end
+            
+            %                 alpha_tbcl = str2num(Tnew.Var3{c,:});
+            %                 a_tbcd = str2num(Tnew.Var3{c,:});
+            %                 if  alpha_tbcl > 1 % divide / 10
+            %                     alpha_tbcl_new = alpha_tbcl/10
+            %                 Tnew.Var7(g_ind.tbcl) = {num2str(round(alpha_tbcl_new))};
+            %                 Tnew.Var8(g_ind.tbcl) = {'1'};
+            %                 end
+            %                  if  alpha_tbcl > 1 % divide / 10
+            %                     alpha_tbcl_new = alpha_tbcl/10
+            %                 Tnew.Var7(g_ind.tbcd) = {'1'};
+            %                 Tnew.Var8(g_ind.tbcd) = {'1'};
+            %                 end
+            
+            
+            %% generate simulations with blending manipulation
+            utt_mod = [utt{1} '_mod_'  num2str(bl_cl(bl))];
+            writetable(Tnew,['TV'  utt_mod '.O'], 'WriteVariableNames', false, 'Delimiter',' ', 'FileType','text')
+            % create new PH.O from TV.O
+            gen_ph(utt_mod, coupling)
+            tada(utt_mod) % generate simulations with blending manipulation
+            
+            %% write file
+            z = load(utt_mod);
+            z = struct2cell(z.state.ASYPEL); % this is where the resulting articulatory trajectories are located ASY = CASY, PEL = Pelets
+            for j = 1:8
+                shape(j,:) = horzcat(z{j}(1,1:210),z{j}(2,1:210));
+                t(j,:) = table(Tnew.Var3(g_ind.tbcl_alv(1),1), Tnew.Var3(g_ind.tbcd_alv(1),1),...
+                    Tnew.Var3(g_ind.tbcl_v3(1),1), Tnew.Var3(g_ind.tbcd_v3(1),1),...
+                    Tnew.Var4(g_ind.tbcl_alv(1),1), Tnew.Var4(g_ind.tbcl_v3(1),1), ...
+                    Tnew.Var7(g_ind.tbcl_alv(1),1), Tnew.Var7(g_ind.tbcl_v3(1),1));
+                r(j,:) = splitvars(table(string(utt_mod), t(j,:), art(j), shape(j,:)));
+            end
+           out_mod.Properties.VariableNames(:,:) = r.Properties.VariableNames(:,:);
+           out_mod = [out_mod; r];
+        end
+end
+
+%% results
+% collect all the results for the current utt
+res_mod  = readtable('res_mod.txt'); % adults tbcl_Alv changed to 100
+res_bl = [res_mod(:,1:430); out_mod(:,1:430)];
+writetable(res_bl, "res_bl")
